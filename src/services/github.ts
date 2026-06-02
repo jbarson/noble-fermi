@@ -192,3 +192,95 @@ export async function fetchFileContent(
   await handleResponse(response);
   return response.text();
 }
+
+export interface GraphQLComment {
+  id: string;
+  body: string;
+  createdAt: string;
+  author: {
+    login: string;
+    avatarUrl: string;
+  } | null;
+}
+
+export interface GraphQLReviewThread {
+  id: string;
+  path: string;
+  line: number;
+  side: "LEFT" | "RIGHT";
+  comments: {
+    nodes: GraphQLComment[];
+  };
+}
+
+/**
+ * Fetches pull request review threads via GitHub GraphQL API.
+ */
+export async function fetchGraphQLComments(
+  owner: string,
+  repo: string,
+  prNumber: number,
+  token?: string
+): Promise<GraphQLReviewThread[]> {
+  if (!token || !token.trim()) {
+    // GraphQL API requires authentication
+    return [];
+  }
+
+  const query = `
+    query GetPullRequestComments($owner: String!, $repo: String!, $number: Int!) {
+      repository(owner: $owner, name: $repo) {
+        pullRequest(number: $number) {
+          reviewThreads(first: 80) {
+            nodes {
+              id
+              path
+              line
+              side
+              comments(first: 30) {
+                nodes {
+                  id
+                  body
+                  createdAt
+                  author {
+                    login
+                    avatarUrl
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const url = "https://api.github.com/graphql";
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token.trim()}`,
+    },
+    body: JSON.stringify({
+      query,
+      variables: {
+        owner,
+        repo,
+        number: prNumber,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`GraphQL request failed with status ${response.status}`);
+  }
+
+  const result = await response.json();
+  if (result.errors && result.errors.length > 0) {
+    throw new Error(`GitHub GraphQL Error: ${result.errors[0].message}`);
+  }
+
+  const nodes: GraphQLReviewThread[] = result.data?.repository?.pullRequest?.reviewThreads?.nodes || [];
+  return nodes.filter((n) => n.line !== null && n.line !== undefined);
+}

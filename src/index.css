@@ -880,12 +880,36 @@ h1, h2, h3, h4 {
   background: linear-gradient(135deg, var(--primary), #d946ef);
   color: white;
   text-transform: uppercase;
+  overflow: hidden; /* Ensure avatar image doesn't overflow rounded corners */
+}
+
+.comment-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
 }
 
 .comment-author-name {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.comment-badge-github {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--primary);
+  background: hsl(var(--primary-hsl) / 0.1);
+  border: 1px solid hsl(var(--primary-hsl) / 0.2);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.comment-card.github-comment {
+  border-left: 3px solid hsl(var(--primary-hsl) / 0.5);
 }
 
 .comment-time {
