@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Eye, EyeOff, FileText, Files } from "lucide-react";
-import type { FileChange, GitHubUrlInfo } from "../services/github";
+import { fetchGraphQLComments } from "../services/github";
+import type { FileChange, GitHubUrlInfo, GraphQLReviewThread } from "../services/github";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { FileDiffItem } from "./FileDiffItem";
 
@@ -22,6 +23,8 @@ export interface InlineComment {
   author: string;
   text: string;
   createdAt: string;
+  avatarUrl?: string; // Support avatar URL for GitHub authors
+  isGitHubComment?: boolean; // Distinguish GitHub API comments
 }
 
 export function DiffViewer({ files, activeFile, info, token, baseSha, headSha }: DiffViewerProps) {
@@ -31,8 +34,42 @@ export function DiffViewer({ files, activeFile, info, token, baseSha, headSha }:
 
   // Global comments state
   const [comments, setComments] = useLocalStorage<InlineComment[]>("diff-comments", []);
+  const [githubComments, setGithubComments] = useState<GraphQLReviewThread[]>([]);
 
   const sessionKey = info ? `${info.owner}/${info.repo}/${info.resourceType}/${info.id}` : "local";
+
+  // Fetch live reviews from GitHub GraphQL API if viewing a PR
+  useEffect(() => {
+    if (!info || info.resourceType !== "pull" || !token || !token.trim()) {
+      Promise.resolve().then(() => {
+        setGithubComments([]);
+      });
+      return;
+    }
+
+    const { owner, repo, id } = info;
+    const prNumber = parseInt(id, 10);
+    if (isNaN(prNumber)) return;
+
+    let isMounted = true;
+
+    async function loadGithubComments() {
+      try {
+        const threads = await fetchGraphQLComments(owner, repo, prNumber, token);
+        if (isMounted) {
+          setGithubComments(threads);
+        }
+      } catch (err) {
+        console.error("Failed to fetch live GitHub review comments:", err);
+      }
+    }
+
+    loadGithubComments();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [info, token]);
 
   // Scroll to active file when sidebar item is clicked
   useEffect(() => {
@@ -134,6 +171,7 @@ export function DiffViewer({ files, activeFile, info, token, baseSha, headSha }:
                 wrapLines={wrapLines}
                 theme={theme}
                 comments={comments}
+                githubComments={githubComments}
                 onSaveComment={handleSaveComment}
                 onDeleteComment={handleDeleteComment}
                 sessionKey={sessionKey}

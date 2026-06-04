@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { ChevronDown, ChevronRight, FileText, Trash2, ShieldAlert } from "lucide-react";
 import { fetchFileContent } from "../services/github";
-import type { FileChange, GitHubUrlInfo } from "../services/github";
+import type { FileChange, GitHubUrlInfo, GraphQLReviewThread } from "../services/github";
 import { FileDiff } from "@pierre/diffs/react";
 import { parsePatchFiles, parseDiffFromFile } from "@pierre/diffs";
 import type { FileDiffMetadata } from "@pierre/diffs";
@@ -23,6 +23,7 @@ interface FileDiffItemProps {
   wrapLines: boolean;
   theme: "github-dark" | "github-light" | "dracula" | "solarized-light";
   comments: InlineComment[];
+  githubComments: GraphQLReviewThread[];
   onSaveComment: (comment: InlineComment) => void;
   onDeleteComment: (commentId: string) => void;
   sessionKey: string;
@@ -38,6 +39,7 @@ export function FileDiffItem({
   wrapLines,
   theme,
   comments,
+  githubComments,
   onSaveComment,
   onDeleteComment,
   sessionKey,
@@ -211,6 +213,12 @@ export function FileDiffItem({
     });
   };
 
+  // Filter GitHub live comments
+  const fileGithubComments = useMemo(() => {
+    return githubComments.filter((t) => t.path === file.filename);
+  }, [githubComments, file.filename]);
+
+  // Filter local storage comments
   const fileComments = useMemo(() => {
     return comments.filter((c) => c.filename === file.filename && c.sessionKey === sessionKey);
   }, [comments, file.filename, sessionKey]);
@@ -223,6 +231,31 @@ export function FileDiffItem({
       hasDraft: boolean;
     }> = {};
 
+    // 1. Group GitHub live comments
+    fileGithubComments.forEach((thread) => {
+      const side: "deletions" | "additions" = thread.side === "LEFT" ? "deletions" : "additions";
+      const key = `${side}-${thread.line}`;
+      if (!groups[key]) {
+        groups[key] = { side, lineNumber: thread.line, comments: [], hasDraft: false };
+      }
+
+      const mappedComments = thread.comments.nodes.map((c) => ({
+        id: c.id,
+        sessionKey,
+        filename: file.filename,
+        lineNumber: thread.line,
+        side,
+        author: c.author?.login || "Ghost",
+        text: c.body,
+        createdAt: new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        avatarUrl: c.author?.avatarUrl,
+        isGitHubComment: true,
+      }));
+
+      groups[key].comments.push(...mappedComments);
+    });
+
+    // 2. Group local saved comments
     fileComments.forEach((c) => {
       const key = `${c.side}-${c.lineNumber}`;
       if (!groups[key]) {
@@ -231,6 +264,7 @@ export function FileDiffItem({
       groups[key].comments.push(c);
     });
 
+    // 3. Group local drafts
     drafts.forEach((d) => {
       const key = `${d.side}-${d.lineNumber}`;
       if (!groups[key]) {
@@ -248,7 +282,7 @@ export function FileDiffItem({
         hasDraft: g.hasDraft,
       },
     }));
-  }, [fileComments, drafts]);
+  }, [fileGithubComments, fileComments, drafts, file.filename, sessionKey]);
 
   interface GroupedAnnotation {
     side: "additions" | "deletions";
@@ -271,22 +305,31 @@ export function FileDiffItem({
     return (
       <div className="inline-comment-container">
         {lineComments.map((comment: InlineComment) => (
-          <div key={comment.id} className="comment-card">
+          <div key={comment.id} className={`comment-card ${comment.isGitHubComment ? "github-comment" : ""}`}>
             <div className="comment-header">
               <div className="comment-author-info">
                 <div className="comment-author-avatar">
-                  {comment.author[0]}
+                  {comment.avatarUrl ? (
+                    <img src={comment.avatarUrl} alt={comment.author} className="comment-avatar-img" />
+                  ) : (
+                    comment.author[0]
+                  )}
                 </div>
                 <span className="comment-author-name">{comment.author}</span>
+                {comment.isGitHubComment && (
+                  <span className="comment-badge-github">GitHub</span>
+                )}
                 <span className="comment-time">{comment.createdAt}</span>
               </div>
-              <button
-                className="comment-delete-btn"
-                onClick={() => onDeleteComment(comment.id)}
-                title="Delete comment"
-              >
-                <Trash2 size={13} />
-              </button>
+              {!comment.isGitHubComment && (
+                <button
+                  className="comment-delete-btn"
+                  onClick={() => onDeleteComment(comment.id)}
+                  title="Delete comment"
+                >
+                  <Trash2 size={13} />
+                </button>
+              )}
             </div>
             <div className="comment-body">{comment.text}</div>
           </div>
