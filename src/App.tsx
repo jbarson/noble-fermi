@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { Navbar } from "./components/Navbar";
@@ -25,16 +25,7 @@ export default function App() {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
-  // Handle URL Query Params (Routing)
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const urlParam = params.get("url");
-    if (urlParam) {
-      handleLoadUrl(urlParam);
-    }
-  }, []);
-
-  const handleLoadUrl = async (targetUrl: string) => {
+  const handleLoadUrl = useCallback(async (targetUrl: string) => {
     const parsed = parseGitHubUrl(targetUrl);
     if (!parsed) {
       setError("Invalid GitHub URL format.");
@@ -61,13 +52,25 @@ export default function App() {
         const defaultFile = session.files.find(f => f.status !== "removed") || session.files[0];
         setActiveFile(defaultFile);
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setError(err.message || "Failed to load differences. Verify the URL is correct and your token has permission.");
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message || "Failed to load differences. Verify the URL is correct and your token has permission.");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [token]);
+
+  // Handle URL Query Params (Routing)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlParam = params.get("url");
+    if (urlParam) {
+      Promise.resolve().then(() => {
+        handleLoadUrl(urlParam);
+      });
+    }
+  }, [handleLoadUrl]);
 
   const handleReset = () => {
     setActiveSession(null);
@@ -151,6 +154,7 @@ export default function App() {
 
               {/* Main Diff Code Display */}
               <DiffViewer
+                files={activeSession.files}
                 activeFile={activeFile}
                 info={activeSession.info}
                 token={token}
