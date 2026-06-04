@@ -152,7 +152,7 @@ async function fetchCompare(info: GitHubUrlInfo, token?: string): Promise<DiffSe
     info,
     files: data.files || [],
     baseSha: data.base_commit?.sha || "",
-    headSha: data.merge_base_commit?.sha || data.commits?.[data.commits.length - 1]?.sha || "",
+    headSha: data.merge_base_commit?.sha || (data.commits && data.commits.length > 0 ? data.commits[data.commits.length - 1]?.sha : "") || "",
   };
 }
 
