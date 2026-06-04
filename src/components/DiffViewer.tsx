@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Eye, EyeOff, FileText, Trash2 } from "lucide-react";
-import { fetchFileContent } from "../services/github";
-import type { FileChange, GitHubUrlInfo } from "../services/github";
+import { fetchFileContent, fetchGraphQLComments } from "../services/github";
+import type { FileChange, GitHubUrlInfo, GraphQLReviewThread } from "../services/github";
 import { FileDiff } from "@pierre/diffs/react";
 import { parsePatchFiles, parseDiffFromFile } from "@pierre/diffs";
 import { useLocalStorage } from "../hooks/useLocalStorage";
@@ -23,6 +23,8 @@ export interface InlineComment {
   author: string;
   text: string;
   createdAt: string;
+  avatarUrl?: string; // Support avatar URL for GitHub authors
+  isGitHubComment?: boolean; // Distinguish GitHub API comments
 }
 
 export interface DraftComment {
@@ -43,11 +45,45 @@ export function DiffViewer({ activeFile, info, token, baseSha, headSha }: DiffVi
   const [comments, setComments] = useLocalStorage<InlineComment[]>("diff-comments", []);
   const [drafts, setDrafts] = useState<DraftComment[]>([]);
   const [draftText, setDraftText] = useState<Record<string, string>>({});
+  const [githubComments, setGithubComments] = useState<GraphQLReviewThread[]>([]);
 
   const getDraftKey = (filename: string, side: string, lineNumber: number) => 
     `${filename}-${side}-${lineNumber}`;
 
   const sessionKey = info ? `${info.owner}/${info.repo}/${info.resourceType}/${info.id}` : "local";
+
+  // Fetch live reviews from GitHub GraphQL API if viewing a PR
+  useEffect(() => {
+    if (!info || info.resourceType !== "pull" || !token || !token.trim()) {
+      Promise.resolve().then(() => {
+        setGithubComments([]);
+      });
+      return;
+    }
+
+    const { owner, repo, id } = info;
+    const prNumber = parseInt(id, 10);
+    if (isNaN(prNumber)) return;
+
+    let isMounted = true;
+
+    async function loadGithubComments() {
+      try {
+        const threads = await fetchGraphQLComments(owner, repo, prNumber, token);
+        if (isMounted) {
+          setGithubComments(threads);
+        }
+      } catch (err) {
+        console.error("Failed to fetch live GitHub review comments:", err);
+      }
+    }
+
+    loadGithubComments();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [info, token]);
 
   useEffect(() => {
     const file = activeFile;
@@ -209,6 +245,11 @@ export function DiffViewer({ activeFile, info, token, baseSha, headSha }: DiffVi
     return comments.filter((c) => c.filename === activeFile.filename && c.sessionKey === sessionKey);
   }, [comments, activeFile, sessionKey]);
 
+  const activeGithubComments = useMemo(() => {
+    if (!activeFile) return [];
+    return githubComments.filter((t) => t.path === activeFile.filename);
+  }, [githubComments, activeFile]);
+
   const fileDrafts = useMemo(() => {
     if (!activeFile) return [];
     return drafts.filter((d) => d.filename === activeFile.filename);
@@ -224,6 +265,31 @@ export function DiffViewer({ activeFile, info, token, baseSha, headSha }: DiffVi
       hasDraft: boolean;
     }> = {};
 
+    // 1. Group GitHub live comments
+    activeGithubComments.forEach((thread) => {
+      const side: "deletions" | "additions" = thread.side === "LEFT" ? "deletions" : "additions";
+      const key = `${side}-${thread.line}`;
+      if (!groups[key]) {
+        groups[key] = { side, lineNumber: thread.line, comments: [], hasDraft: false };
+      }
+
+      const mappedComments = thread.comments.nodes.map((c) => ({
+        id: c.id,
+        sessionKey,
+        filename: activeFile.filename,
+        lineNumber: thread.line,
+        side,
+        author: c.author?.login || "Ghost",
+        text: c.body,
+        createdAt: new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        avatarUrl: c.author?.avatarUrl,
+        isGitHubComment: true,
+      }));
+
+      groups[key].comments.push(...mappedComments);
+    });
+
+    // 2. Group local saved comments
     activeFileComments.forEach((c) => {
       const key = `${c.side}-${c.lineNumber}`;
       if (!groups[key]) {
@@ -232,6 +298,7 @@ export function DiffViewer({ activeFile, info, token, baseSha, headSha }: DiffVi
       groups[key].comments.push(c);
     });
 
+    // 3. Group local drafts
     fileDrafts.forEach((d) => {
       const key = `${d.side}-${d.lineNumber}`;
       if (!groups[key]) {
@@ -249,7 +316,7 @@ export function DiffViewer({ activeFile, info, token, baseSha, headSha }: DiffVi
         hasDraft: g.hasDraft,
       },
     }));
-  }, [activeFileComments, fileDrafts, activeFile]);
+  }, [activeFileComments, activeGithubComments, fileDrafts, activeFile, sessionKey]);
 
   interface GroupedAnnotation {
     side: "additions" | "deletions";
@@ -272,22 +339,31 @@ export function DiffViewer({ activeFile, info, token, baseSha, headSha }: DiffVi
     return (
       <div className="inline-comment-container">
         {lineComments.map((comment: InlineComment) => (
-          <div key={comment.id} className="comment-card">
+          <div key={comment.id} className={`comment-card ${comment.isGitHubComment ? "github-comment" : ""}`}>
             <div className="comment-header">
               <div className="comment-author-info">
                 <div className="comment-author-avatar">
-                  {comment.author[0]}
+                  {comment.avatarUrl ? (
+                    <img src={comment.avatarUrl} alt={comment.author} className="comment-avatar-img" />
+                  ) : (
+                    comment.author[0]
+                  )}
                 </div>
                 <span className="comment-author-name">{comment.author}</span>
+                {comment.isGitHubComment && (
+                  <span className="comment-badge-github">GitHub</span>
+                )}
                 <span className="comment-time">{comment.createdAt}</span>
               </div>
-              <button
-                className="comment-delete-btn"
-                onClick={() => handleDeleteComment(comment.id)}
-                title="Delete comment"
-              >
-                <Trash2 size={13} />
-              </button>
+              {!comment.isGitHubComment && (
+                <button
+                  className="comment-delete-btn"
+                  onClick={() => handleDeleteComment(comment.id)}
+                  title="Delete comment"
+                >
+                  <Trash2 size={13} />
+                </button>
+              )}
             </div>
             <div className="comment-body">{comment.text}</div>
           </div>
