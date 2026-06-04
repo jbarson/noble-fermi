@@ -233,7 +233,7 @@ export function FileDiffItem({
 
     // 1. Group GitHub live comments
     fileGithubComments.forEach((thread) => {
-      const side: "deletions" | "additions" = thread.side === "LEFT" ? "deletions" : "additions";
+      const side: "deletions" | "additions" = thread.diffSide === "LEFT" ? "deletions" : "additions";
       const key = `${side}-${thread.line}`;
       if (!groups[key]) {
         groups[key] = { side, lineNumber: thread.line, comments: [], hasDraft: false };

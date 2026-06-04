@@ -207,7 +207,7 @@ export interface GraphQLReviewThread {
   id: string;
   path: string;
   line: number;
-  side: "LEFT" | "RIGHT";
+  diffSide: "LEFT" | "RIGHT";
   comments: {
     nodes: GraphQLComment[];
   };
@@ -236,7 +236,7 @@ export async function fetchGraphQLComments(
               id
               path
               line
-              side
+              diffSide
               comments(first: 30) {
                 nodes {
                   id
