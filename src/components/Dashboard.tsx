@@ -28,7 +28,7 @@ export function Dashboard({ onSubmit, isLoading, token, onOpenTokenModal }: Dash
       ...prev,
       [org]: !prev[org],
     }));
-  }, []);
+  }, [setCollapsedOrgs]);
 
   const isAuthenticated = !!token && token.trim().length > 0;
 

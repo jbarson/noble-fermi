@@ -16,11 +16,41 @@ export interface FileChange {
   blob_url: string;
 }
 
+export interface PRMetadata {
+  title: string;
+  body: string | null;
+  state: "open" | "closed";
+  merged: boolean;
+  draft: boolean;
+  user: {
+    login: string;
+    avatar_url: string;
+  };
+  created_at: string;
+  base: {
+    ref: string;
+    repo: {
+      full_name: string;
+    };
+  };
+  head: {
+    ref: string;
+    repo: {
+      full_name: string;
+    };
+  };
+  additions: number;
+  deletions: number;
+  changed_files: number;
+  comments: number;
+}
+
 export interface DiffSession {
   info: GitHubUrlInfo;
   files: FileChange[];
   baseSha?: string;
   headSha?: string;
+  prMetadata?: PRMetadata;
 }
 
 /**
@@ -119,6 +149,34 @@ async function fetchPullRequest(info: GitHubUrlInfo, token?: string): Promise<Di
     files: filesData,
     baseSha: prData.base.sha,
     headSha: prData.head.sha,
+    prMetadata: {
+      title: prData.title,
+      body: prData.body,
+      state: prData.state,
+      merged: prData.merged || false,
+      draft: prData.draft || false,
+      user: {
+        login: prData.user.login,
+        avatar_url: prData.user.avatar_url,
+      },
+      created_at: prData.created_at,
+      base: {
+        ref: prData.base.ref,
+        repo: {
+          full_name: prData.base.repo?.full_name || `${info.owner}/${info.repo}`,
+        },
+      },
+      head: {
+        ref: prData.head.ref,
+        repo: {
+          full_name: prData.head.repo?.full_name || `${info.owner}/${info.repo}`,
+        },
+      },
+      additions: prData.additions || 0,
+      deletions: prData.deletions || 0,
+      changed_files: prData.changed_files || 0,
+      comments: prData.comments || 0,
+    },
   };
 }
 
@@ -356,4 +414,53 @@ export async function fetchUserPRs(username: string, token: string): Promise<Sea
   combined.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
   return combined;
+}
+
+export interface TimelineEvent {
+  id: number;
+  event: string;
+  created_at: string;
+  actor?: {
+    login: string;
+    avatar_url: string;
+  };
+  body?: string;
+  commit_id?: string;
+  sha?: string;
+  message?: string;
+  author?: {
+    name: string;
+    email: string;
+  };
+  review_requester?: {
+    login: string;
+  };
+  requested_reviewer?: {
+    login: string;
+  };
+  state?: string;
+  user?: {
+    login: string;
+    avatar_url: string;
+  };
+  body_html?: string;
+  submitted_at?: string;
+}
+
+/**
+ * Fetches the timeline/events for a PR.
+ */
+export async function fetchPRTimeline(
+  owner: string,
+  repo: string,
+  prNumber: number,
+  token?: string
+): Promise<TimelineEvent[]> {
+  const url = `https://api.github.com/repos/${owner}/${repo}/issues/${prNumber}/timeline?per_page=100`;
+  const response = await fetch(url, { headers: getHeaders(token) });
+  if (response.status === 404) {
+    return [];
+  }
+  await handleResponse(response);
+  return response.json();
 }
