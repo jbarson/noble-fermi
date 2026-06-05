@@ -32,7 +32,7 @@ export function PRConversation({ owner, repo, prNumber, token, prMetadata }: PRC
     if (!sha) return;
     setExpandedCommits((prev) => ({
       ...prev,
-      [sha]: !prev[sha],
+      [sha]: prev[sha] !== undefined ? !prev[sha] : false,
     }));
   }, []);
 
@@ -58,9 +58,13 @@ export function PRConversation({ owner, repo, prNumber, token, prMetadata }: PRC
     });
   }, [loadTimeline]);
 
-  const getRelativeTime = (dateStr: string) => {
+  const getRelativeTime = (dateStr: string | undefined) => {
+    if (!dateStr) return "";
     try {
       const date = new Date(dateStr);
+      if (isNaN(date.getTime())) {
+        return dateStr;
+      }
       const now = new Date();
       const diffMs = now.getTime() - date.getTime();
       
@@ -336,7 +340,8 @@ export function PRConversation({ owner, repo, prNumber, token, prMetadata }: PRC
                   const subject = rawLines[0] || "";
                   const body = rawLines.slice(1).join("\n").trim();
                   const hasBody = body.length > 0;
-                  const isExpanded = !!expandedCommits[sha];
+                  const isExpanded = expandedCommits[sha] !== undefined ? expandedCommits[sha] : true;
+                  const commitDate = event.created_at || event.author?.date || event.committer?.date || "";
 
                   return (
                     <div key={`event-committed-${eventId}`} className="timeline-commit-group">
@@ -362,7 +367,7 @@ export function PRConversation({ owner, repo, prNumber, token, prMetadata }: PRC
                         <span className="commit-sha-badge">
                           {shortSha}
                         </span>
-                        <span className="event-time-stamp">{getRelativeTime(event.created_at)}</span>
+                        <span className="event-time-stamp">{getRelativeTime(commitDate)}</span>
                       </div>
                       {hasBody && isExpanded && (
                         <div className="timeline-comment-card commit-body-card glass-card">

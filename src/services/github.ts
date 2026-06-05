@@ -431,6 +431,12 @@ export interface TimelineEvent {
   author?: {
     name: string;
     email: string;
+    date?: string;
+  };
+  committer?: {
+    name: string;
+    email: string;
+    date?: string;
   };
   review_requester?: {
     login: string;
