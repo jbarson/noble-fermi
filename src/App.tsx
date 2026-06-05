@@ -177,8 +177,15 @@ export default function App() {
               {activeSession.prMetadata && (
                 <div className="pr-detail-header">
                   <div className="pr-header-title-row">
-                    <h1 className="pr-title">{activeSession.prMetadata.title}</h1>
-                    <span className="pr-number">#{activeSession.info.id}</span>
+                    <a
+                      href={`https://github.com/${activeSession.info.owner}/${activeSession.info.repo}/pull/${activeSession.info.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="pr-header-link"
+                    >
+                      <h1 className="pr-title">{activeSession.prMetadata.title}</h1>
+                      <span className="pr-number">#{activeSession.info.id}</span>
+                    </a>
                   </div>
                   <div className="pr-header-meta">
                     <span className={`pr-state-badge ${activeSession.prMetadata.merged ? "merged" : activeSession.prMetadata.state}`}>

@@ -1419,18 +1419,40 @@ h1, h2, h3, h4 {
   gap: 8px;
 }
 
+.pr-header-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  min-width: 0;
+}
+
 .pr-title {
   font-size: 20px;
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
   line-height: 1.3;
+  transition: color var(--transition-fast) ease;
+}
+
+.pr-header-link:hover .pr-title {
+  color: var(--primary);
+  text-decoration: underline;
+  text-decoration-color: hsl(var(--primary-hsl) / 0.3);
 }
 
 .pr-detail-header .pr-number {
   font-size: 20px;
   color: var(--text-secondary);
   font-weight: 300;
+  transition: color var(--transition-fast) ease;
+}
+
+.pr-header-link:hover .pr-number {
+  color: var(--primary-hover);
 }
 
 .pr-header-meta {
