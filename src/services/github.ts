@@ -284,3 +284,76 @@ export async function fetchGraphQLComments(
   const nodes: GraphQLReviewThread[] = result.data?.repository?.pullRequest?.reviewThreads?.nodes || [];
   return nodes.filter((n) => n.line !== null && n.line !== undefined);
 }
+
+export interface SearchPRItem {
+  id: number;
+  title: string;
+  html_url: string;
+  number: number;
+  updated_at: string;
+  user: {
+    login: string;
+    avatar_url: string;
+  };
+  labels: Array<{ name: string; color: string }>;
+  assignees: Array<{ login: string }>;
+  repository_url: string;
+}
+
+/**
+ * Fetches the authenticated user's profile.
+ */
+export async function fetchUserProfile(token: string): Promise<{ login: string; avatar_url: string }> {
+  const response = await fetch("https://api.github.com/user", {
+    headers: getHeaders(token),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch user profile: status ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * Searches for open PRs created by or assigned to the authenticated user.
+ */
+export async function fetchUserPRs(username: string, token: string): Promise<SearchPRItem[]> {
+  const qAuthor = `type:pr state:open author:${username}`;
+  const qAssignee = `type:pr state:open assignee:${username}`;
+
+  const fetchWithQuery = async (query: string): Promise<SearchPRItem[]> => {
+    const url = `https://api.github.com/search/issues?q=${encodeURIComponent(query)}&per_page=100`;
+    try {
+      const response = await fetch(url, {
+        headers: getHeaders(token),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to search PRs with query "${query}": status ${response.status}`);
+      }
+      const data = await response.json();
+      return data.items || [];
+    } catch (err) {
+      throw new Error(`Failed to execute search query "${query}"`, { cause: err });
+    }
+  };
+
+  const [authorItems, assigneeItems] = await Promise.all([
+    fetchWithQuery(qAuthor),
+    fetchWithQuery(qAssignee),
+  ]);
+
+  // Combine and deduplicate by item.id
+  const seenIds = new Set<number>();
+  const combined: SearchPRItem[] = [];
+
+  for (const item of [...authorItems, ...assigneeItems]) {
+    if (!seenIds.has(item.id)) {
+      seenIds.add(item.id);
+      combined.push(item);
+    }
+  }
+
+  // Sort by updated_at descending
+  combined.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+
+  return combined;
+}

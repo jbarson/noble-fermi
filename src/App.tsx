@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { Navbar } from "./components/Navbar";
-import { UrlInput } from "./components/UrlInput";
+import { Dashboard } from "./components/Dashboard";
 import { SidebarTree } from "./components/SidebarTree";
 import { DiffViewer } from "./components/DiffViewer";
 import { TokenModal } from "./components/TokenModal";
@@ -130,7 +130,12 @@ export default function App() {
         )}
 
         {!activeSession && !isLoading && !error ? (
-          <UrlInput onSubmit={handleLoadUrl} isLoading={isLoading} />
+          <Dashboard
+            onSubmit={handleLoadUrl}
+            isLoading={isLoading}
+            token={token}
+            onOpenTokenModal={() => setIsTokenModalOpen(true)}
+          />
         ) : (
           activeSession && (
             <>
