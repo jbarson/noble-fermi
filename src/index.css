@@ -1569,6 +1569,7 @@ h1, h2, h3, h4 {
   border: 1px solid var(--border);
   overflow: hidden;
   box-shadow: var(--shadow-sm);
+  flex-shrink: 0; /* Prevent card from shrinking and cutting off content under flex containers */
 }
 
 .timeline-comment-card.main-description {
@@ -1659,6 +1660,7 @@ h1, h2, h3, h4 {
   padding: 6px 0;
   margin-left: 20px;
   position: relative;
+  flex-shrink: 0;
 }
 
 .event-icon-badge {
@@ -1700,6 +1702,7 @@ h1, h2, h3, h4 {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .commit-expand-btn {
@@ -1750,6 +1753,7 @@ h1, h2, h3, h4 {
   display: flex;
   flex-direction: column;
   margin-left: 20px;
+  flex-shrink: 0;
 }
 
 .review-header-event {
@@ -1878,15 +1882,18 @@ h1, h2, h3, h4 {
 }
 
 .formatted-list {
-  padding-left: 20px;
-  margin: 4px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  list-style-type: disc;
+  padding-left: 24px;
+  margin: 12px 0;
 }
 
 .formatted-list li {
-  list-style-type: disc;
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+
+.formatted-list li:last-child {
+  margin-bottom: 0;
 }
 
 .formatted-quote {
