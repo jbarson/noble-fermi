@@ -1655,11 +1655,11 @@ h1, h2, h3, h4 {
 /* Row-based Events (Commits, State changes, review headers) */
 .timeline-row-event {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   font-size: 13px;
   color: var(--text-secondary);
-  padding: 6px 0;
+  padding: 8px 0;
   margin-left: 20px;
   position: relative;
   flex-shrink: 0;
@@ -1687,9 +1687,7 @@ h1, h2, h3, h4 {
 .event-detail-text {
   flex: 1;
   color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  display: block;
   min-width: 0;
 }
 
@@ -1697,10 +1695,10 @@ h1, h2, h3, h4 {
   font-weight: 600;
   font-size: 15px;
   color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
+  display: inline;
 }
 
 .timeline-commit-group {
@@ -1725,6 +1723,8 @@ h1, h2, h3, h4 {
   justify-content: center;
   transition: all 0.2s ease;
   font-weight: bold;
+  margin-left: 6px;
+  vertical-align: middle;
 }
 
 .commit-expand-btn:hover {
