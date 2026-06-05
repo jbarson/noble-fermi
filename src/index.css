@@ -1663,6 +1663,7 @@ h1, h2, h3, h4 {
   margin-left: 20px;
   position: relative;
   flex-shrink: 0;
+  min-width: 0;
 }
 
 .event-icon-badge {
@@ -1689,6 +1690,7 @@ h1, h2, h3, h4 {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
 
 .commit-message {
@@ -1698,6 +1700,7 @@ h1, h2, h3, h4 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .timeline-commit-group {
