@@ -56,6 +56,7 @@ export default function App() {
 
     try {
       const session = await fetchDiffSession(parsed, token);
+      console.log("App session loaded:", session);
       setActiveSession(session);
       if (session.prMetadata) {
         if (initialTab === "files") {

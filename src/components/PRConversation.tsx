@@ -23,6 +23,7 @@ interface PRConversationProps {
 }
 
 export function PRConversation({ owner, repo, prNumber, token, prMetadata }: PRConversationProps) {
+  console.log("PRConversation prMetadata:", prMetadata);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
