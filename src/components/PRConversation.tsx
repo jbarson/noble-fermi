@@ -130,7 +130,7 @@ export function PRConversation({ owner, repo, prNumber, token, prMetadata }: PRC
   const renderFormattedBody = (text: string | null) => {
     if (!text) return <p className="body-empty">No description provided.</p>;
 
-    const lines = text.split("\n");
+    const lines = text.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").split("\n");
     const elements: React.ReactNode[] = [];
     let listItems: string[] = [];
     let inBlockquote = false;
