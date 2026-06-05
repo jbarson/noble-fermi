@@ -135,6 +135,9 @@ export function PRConversation({ owner, repo, prNumber, token, prMetadata }: PRC
     let listItems: string[] = [];
     let inBlockquote = false;
     let blockquoteText: string[] = [];
+    let inCodeBlock = false;
+    let codeBlockText: string[] = [];
+    let codeBlockLang = "";
 
     const flushList = (key: number) => {
       if (listItems.length > 0) {
@@ -163,8 +166,45 @@ export function PRConversation({ owner, repo, prNumber, token, prMetadata }: PRC
       }
     };
 
+    const flushCodeBlock = (key: number) => {
+      if (codeBlockText.length > 0) {
+        elements.push(
+          <pre key={`code-${key}`} className="formatted-pre-block">
+            <code className={codeBlockLang ? `language-${codeBlockLang}` : ""}>
+              {codeBlockText.join("\n")}
+            </code>
+          </pre>
+        );
+        codeBlockText = [];
+        inCodeBlock = false;
+        codeBlockLang = "";
+      }
+    };
+
     lines.forEach((line, index) => {
       const trimmed = line.trim();
+
+      // Check code blocks
+      if (trimmed.startsWith("```")) {
+        flushList(index);
+        flushBlockquote(index);
+        
+        if (inCodeBlock) {
+          flushCodeBlock(index);
+        } else {
+          inCodeBlock = true;
+          codeBlockLang = trimmed.slice(3).trim();
+        }
+        return;
+      }
+
+      if (inCodeBlock) {
+        // We preserve original spaces inside code blocks
+        // But trim carriage returns if present
+        const cleanLine = line.endsWith("\r") ? line.slice(0, -1) : line;
+        codeBlockText.push(cleanLine);
+        return;
+      }
 
       if (trimmed.startsWith(">")) {
         flushList(index);
@@ -200,6 +240,7 @@ export function PRConversation({ owner, repo, prNumber, token, prMetadata }: PRC
 
     flushList(lines.length);
     flushBlockquote(lines.length);
+    flushCodeBlock(lines.length);
 
     return <div className="formatted-markdown">{elements}</div>;
   };
