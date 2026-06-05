@@ -332,7 +332,7 @@ export function PRConversation({ owner, repo, prNumber, token, prMetadata }: PRC
                   const sha = event.sha || event.commit_id || "";
                   const shortSha = sha.substring(0, 7);
                   const commitMsg = event.message || "";
-                  const rawLines = commitMsg.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").split("\n");
+                  const rawLines = commitMsg.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").replace(/\r/g, "").split("\n");
                   const subject = rawLines[0] || "";
                   const body = rawLines.slice(1).join("\n").trim();
                   const hasBody = body.length > 0;
