@@ -1695,6 +1695,39 @@ h1, h2, h3, h4 {
   white-space: nowrap;
 }
 
+.timeline-commit-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.commit-expand-btn {
+  background: hsl(var(--bg-secondary-hsl) / 0.6);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  padding: 0 6px;
+  font-size: 11px;
+  height: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  font-weight: bold;
+}
+
+.commit-expand-btn:hover {
+  background: hsl(var(--bg-secondary-hsl));
+  color: var(--text-primary);
+  border-color: hsl(var(--primary-hsl) / 0.4);
+}
+
+.timeline-events-list .commit-body-card {
+  margin-top: 4px;
+}
+
 .commit-sha-badge {
   font-family: var(--font-mono);
   font-size: 11px;

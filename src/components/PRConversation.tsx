@@ -26,6 +26,15 @@ export function PRConversation({ owner, repo, prNumber, token, prMetadata }: PRC
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expandedCommits, setExpandedCommits] = useState<Record<string, boolean>>({});
+
+  const toggleCommitExpand = useCallback((sha: string) => {
+    if (!sha) return;
+    setExpandedCommits((prev) => ({
+      ...prev,
+      [sha]: !prev[sha],
+    }));
+  }, []);
 
   const loadTimeline = useCallback(async () => {
     setIsLoading(true);
@@ -319,23 +328,52 @@ export function PRConversation({ owner, repo, prNumber, token, prMetadata }: PRC
                     </div>
                   );
 
-                case "committed":
+                case "committed": {
+                  const sha = event.sha || event.commit_id || "";
+                  const shortSha = sha.substring(0, 7);
+                  const commitMsg = event.message || "";
+                  const rawLines = commitMsg.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").split("\n");
+                  const subject = rawLines[0] || "";
+                  const body = rawLines.slice(1).join("\n").trim();
+                  const hasBody = body.length > 0;
+                  const isExpanded = !!expandedCommits[sha];
+
                   return (
-                    <div key={`event-committed-${eventId}`} className="timeline-row-event">
-                      <div className="event-icon-badge commit-badge">
-                        <GitCommit size={14} />
-                      </div>
-                      <div className="event-detail-text">
-                        <span className="commit-message" title={event.message}>
-                          {event.message}
+                    <div key={`event-committed-${eventId}`} className="timeline-commit-group">
+                      <div className="timeline-row-event commit-header-event">
+                        <div className="event-icon-badge commit-badge">
+                          <GitCommit size={14} />
+                        </div>
+                        <div className="event-detail-text">
+                          <span className="commit-message" title={subject}>
+                            {subject}
+                          </span>
+                          {hasBody && (
+                            <button
+                              onClick={() => toggleCommitExpand(sha)}
+                              className="commit-expand-btn"
+                              aria-label={isExpanded ? "Collapse commit body" : "Expand commit body"}
+                              title={isExpanded ? "Collapse commit body" : "Expand commit body"}
+                            >
+                              ...
+                            </button>
+                          )}
+                        </div>
+                        <span className="commit-sha-badge">
+                          {shortSha}
                         </span>
+                        <span className="event-time-stamp">{getRelativeTime(event.created_at)}</span>
                       </div>
-                      <span className="commit-sha-badge">
-                        {(event.sha || event.commit_id || "").substring(0, 7)}
-                      </span>
-                      <span className="event-time-stamp">{getRelativeTime(event.created_at)}</span>
+                      {hasBody && isExpanded && (
+                        <div className="timeline-comment-card commit-body-card glass-card">
+                          <div className="comment-body">
+                            {renderFormattedBody(body)}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
+                }
 
                 case "reviewed": {
                   const isApproved = event.state?.toLowerCase() === "approved";
