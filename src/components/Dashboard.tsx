@@ -268,7 +268,7 @@ export function Dashboard({ onSubmit, isLoading, token, onOpenTokenModal }: Dash
                                   <span className="pr-time">{getRelativeTime(pr.updated_at)}</span>
                                 </div>
 
-                                <h3 className="pr-title" title={pr.title}>
+                                <h3 className="pr-card-title" title={pr.title}>
                                   {pr.title}
                                 </h3>
 
