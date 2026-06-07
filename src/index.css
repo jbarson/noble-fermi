@@ -1254,6 +1254,81 @@ h1, h2, h3, h4 {
   transform: rotate(-90deg);
 }
 
+.org-repositories {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  margin-top: 8px;
+}
+
+.repo-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-left: 20px;
+}
+
+.dashboard-repo-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  transition: color var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background: hsl(var(--bg-card-hsl) / 0.15);
+  border: 1px solid var(--border);
+  align-self: flex-start;
+  backdrop-filter: blur(8px);
+}
+
+.dashboard-repo-title:hover {
+  color: var(--primary);
+  border-color: hsl(var(--primary-hsl) / 0.3);
+  background: hsl(var(--bg-card-hsl) / 0.4);
+}
+
+.dashboard-repo-title .chevron {
+  transition: transform var(--transition-fast);
+  color: var(--text-secondary);
+}
+
+.dashboard-repo-title:hover .chevron {
+  color: var(--primary);
+}
+
+.dashboard-repo-title.collapsed .chevron {
+  transform: rotate(-90deg);
+}
+
+.dashboard-repo-title .folder-icon {
+  color: var(--text-secondary);
+  transition: color var(--transition-fast);
+}
+
+.dashboard-repo-title:hover .folder-icon {
+  color: var(--primary);
+}
+
+.dashboard-repo-title .repo-name {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.dashboard-repo-title .repo-pr-count {
+  font-size: 11px;
+  background: hsl(var(--primary-hsl) / 0.1);
+  color: var(--primary);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+  margin-left: 4px;
+}
+
 .pr-cards-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
