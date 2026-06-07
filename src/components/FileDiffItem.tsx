@@ -1,17 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
 import { ChevronDown, ChevronRight, FileText, Trash2, ShieldAlert } from "lucide-react";
 import { fetchFileContent } from "../services/github";
-import type { FileChange, GitHubUrlInfo, GraphQLReviewThread } from "../services/github";
+import type { FileChange, GitHubUrlInfo } from "../services/github";
 import { FileDiff } from "@pierre/diffs/react";
 import { parsePatchFiles, parseDiffFromFile } from "@pierre/diffs";
 import type { FileDiffMetadata } from "@pierre/diffs";
-import type { InlineComment } from "./DiffViewer";
-
-interface DraftComment {
-  filename: string;
-  lineNumber: number;
-  side: "additions" | "deletions";
-}
+import { useFileAnnotations, useLineAnnotation, useCommentManager } from "../hooks/useAnnotations";
 
 interface FileDiffItemProps {
   file: FileChange;
@@ -22,11 +16,94 @@ interface FileDiffItemProps {
   layout: "split" | "unified";
   wrapLines: boolean;
   theme: "github-dark" | "github-light" | "dracula" | "solarized-light";
-  comments: InlineComment[];
-  githubComments: GraphQLReviewThread[];
-  onSaveComment: (comment: InlineComment) => void;
-  onDeleteComment: (commentId: string) => void;
-  sessionKey: string;
+}
+
+interface LineAnnotationBoxProps {
+  filename: string;
+  side: "additions" | "deletions";
+  lineNumber: number;
+}
+
+function LineAnnotationBox({ filename, side, lineNumber }: LineAnnotationBoxProps) {
+  const {
+    comments,
+    draftText,
+    isSaving,
+    error,
+    updateDraft,
+    cancelDraft,
+    submitComment,
+    deleteComment,
+  } = useLineAnnotation(filename, side, lineNumber);
+
+  const hasDraft = draftText !== undefined;
+
+  return (
+    <div className="inline-comment-container">
+      {comments.map((comment) => (
+        <div key={comment.id} className={`comment-card ${comment.isGitHubComment ? "github-comment" : ""}`}>
+          <div className="comment-header">
+            <div className="comment-author-info">
+              <div className="comment-author-avatar">
+                {comment.avatarUrl ? (
+                  <img src={comment.avatarUrl} alt={comment.author} className="comment-avatar-img" />
+                ) : (
+                  comment.author[0]
+                )}
+              </div>
+              <span className="comment-author-name">{comment.author}</span>
+              {comment.isGitHubComment && (
+                <span className="comment-badge-github">GitHub</span>
+              )}
+              <span className="comment-time">{comment.createdAt}</span>
+            </div>
+            {!comment.isGitHubComment && (
+              <button
+                className="comment-delete-btn"
+                onClick={() => deleteComment(comment.id)}
+                title="Delete comment"
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
+          </div>
+          <div className="comment-body">{comment.text}</div>
+        </div>
+      ))}
+
+      {hasDraft && (
+        <div className="comment-form">
+          <textarea
+            className="comment-textarea"
+            placeholder="Write a comment..."
+            value={draftText}
+            onChange={(e) => updateDraft(e.target.value)}
+            disabled={isSaving}
+            autoFocus
+          />
+          {error && <div className="error-message" style={{ color: "var(--danger)", fontSize: "11px", marginTop: "4px" }}>Failed to save: {error.message}</div>}
+          <div className="comment-form-actions">
+            <button
+              className="btn btn-secondary"
+              style={{ padding: "6px 12px", fontSize: "12px", borderRadius: "var(--radius-sm)" }}
+              onClick={cancelDraft}
+              disabled={isSaving}
+            >
+              Cancel
+            </button>
+            <button
+              className="btn btn-primary"
+              style={{ padding: "6px 12px", fontSize: "12px", borderRadius: "var(--radius-sm)" }}
+              onClick={submitComment}
+              disabled={!draftText.trim() || isSaving}
+            >
+              {isSaving ? "Saving..." : "Comment"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function FileDiffItem({
@@ -38,23 +115,14 @@ export function FileDiffItem({
   layout,
   wrapLines,
   theme,
-  comments,
-  githubComments,
-  onSaveComment,
-  onDeleteComment,
-  sessionKey,
 }: FileDiffItemProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [parsedDiff, setParsedDiff] = useState<FileDiffMetadata | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Local drafts state to prevent typing lag across all files
-  const [drafts, setDrafts] = useState<DraftComment[]>([]);
-  const [draftText, setDraftText] = useState<Record<string, string>>({});
-
-  const getDraftKey = (filename: string, side: string, lineNumber: number) =>
-    `${filename}-${side}-${lineNumber}`;
+  const { manager, context } = useCommentManager();
+  const { fileThreads } = useFileAnnotations(file.filename);
 
   // Fetch diff logic for this specific file
   useEffect(() => {
@@ -139,157 +207,34 @@ export function FileDiffItem({
 
   const handleLineClick = (props: LineClickProps) => {
     const { lineNumber, annotationSide } = props;
-    const side = annotationSide;
-    const draftKey = getDraftKey(file.filename, side, lineNumber);
-    const alreadyHasDraft = drafts.some(
-      (d) => d.filename === file.filename && d.side === side && d.lineNumber === lineNumber
-    );
-
-    if (alreadyHasDraft) return;
-
-    setDrafts((prev) => [
-      ...prev,
-      { filename: file.filename, lineNumber, side },
-    ]);
-    setDraftText((prev) => ({
-      ...prev,
-      [draftKey]: "",
-    }));
-  };
-
-  const handleSaveComment = (lineNumber: number, side: "additions" | "deletions") => {
-    const draftKey = getDraftKey(file.filename, side, lineNumber);
-    const text = draftText[draftKey]?.trim();
-
-    if (!text) return;
-
-    const newComment: InlineComment = {
-      id: Math.random().toString(36).substring(2, 9),
-      sessionKey,
+    manager.dispatch(context, {
+      type: "UPDATE_DRAFT",
       filename: file.filename,
       lineNumber,
-      side,
-      author: "You",
-      text,
-      createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    onSaveComment(newComment);
-    
-    // Clear draft
-    setDrafts((prev) =>
-      prev.filter(
-        (d) =>
-          !(
-            d.filename === file.filename &&
-            d.side === side &&
-            d.lineNumber === lineNumber
-          )
-      )
-    );
-    setDraftText((prev) => {
-      const next = { ...prev };
-      delete next[draftKey];
-      return next;
+      side: annotationSide,
+      text: "",
     });
   };
 
-  const handleCancelDraft = (lineNumber: number, side: "additions" | "deletions") => {
-    setDrafts((prev) =>
-      prev.filter(
-        (d) =>
-          !(
-            d.filename === file.filename &&
-            d.side === side &&
-            d.lineNumber === lineNumber
-          )
-      )
-    );
-    const draftKey = getDraftKey(file.filename, side, lineNumber);
-    setDraftText((prev) => {
-      const next = { ...prev };
-      delete next[draftKey];
-      return next;
-    });
-  };
-
-  // Filter GitHub live comments
-  const fileGithubComments = useMemo(() => {
-    return githubComments.filter((t) => t.path === file.filename);
-  }, [githubComments, file.filename]);
-
-  // Filter local storage comments
-  const fileComments = useMemo(() => {
-    return comments.filter((c) => c.filename === file.filename && c.sessionKey === sessionKey);
-  }, [comments, file.filename, sessionKey]);
-
+  // Format annotations for <FileDiff /> component consumption
   const groupedAnnotations = useMemo(() => {
-    const groups: Record<string, {
-      side: "additions" | "deletions";
-      lineNumber: number;
-      comments: InlineComment[];
-      hasDraft: boolean;
-    }> = {};
-
-    // 1. Group GitHub live comments
-    fileGithubComments.forEach((thread) => {
-      const side: "deletions" | "additions" = thread.diffSide === "LEFT" ? "deletions" : "additions";
-      const key = `${side}-${thread.line}`;
-      if (!groups[key]) {
-        groups[key] = { side, lineNumber: thread.line, comments: [], hasDraft: false };
-      }
-
-      const mappedComments = thread.comments.nodes.map((c) => ({
-        id: c.id,
-        sessionKey,
-        filename: file.filename,
-        lineNumber: thread.line,
-        side,
-        author: c.author?.login || "Ghost",
-        text: c.body,
-        createdAt: new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        avatarUrl: c.author?.avatarUrl,
-        isGitHubComment: true,
-      }));
-
-      groups[key].comments.push(...mappedComments);
-    });
-
-    // 2. Group local saved comments
-    fileComments.forEach((c) => {
-      const key = `${c.side}-${c.lineNumber}`;
-      if (!groups[key]) {
-        groups[key] = { side: c.side, lineNumber: c.lineNumber, comments: [], hasDraft: false };
-      }
-      groups[key].comments.push(c);
-    });
-
-    // 3. Group local drafts
-    drafts.forEach((d) => {
-      const key = `${d.side}-${d.lineNumber}`;
-      if (!groups[key]) {
-        groups[key] = { side: d.side, lineNumber: d.lineNumber, comments: [], hasDraft: false };
-      }
-      groups[key].hasDraft = true;
-    });
-
-    return Object.values(groups).map((g) => ({
-      side: g.side,
-      lineNumber: g.lineNumber,
+    return fileThreads.map((thread) => ({
+      side: thread.side,
+      lineNumber: thread.lineNumber,
       metadata: {
         type: "thread" as const,
-        comments: g.comments,
-        hasDraft: g.hasDraft,
+        comments: thread.comments,
+        hasDraft: thread.draft !== undefined,
       },
     }));
-  }, [fileGithubComments, fileComments, drafts, file.filename, sessionKey]);
+  }, [fileThreads]);
 
   interface GroupedAnnotation {
     side: "additions" | "deletions";
     lineNumber: number;
     metadata: {
       type: "thread";
-      comments: InlineComment[];
+      comments: unknown[];
       hasDraft: boolean;
     };
   }
@@ -298,77 +243,12 @@ export function FileDiffItem({
     const { side, lineNumber, metadata } = annotation;
     if (metadata.type !== "thread") return undefined;
 
-    const { comments: lineComments, hasDraft } = metadata;
-    const draftKey = getDraftKey(file.filename, side, lineNumber);
-    const text = draftText[draftKey] || "";
-
     return (
-      <div className="inline-comment-container">
-        {lineComments.map((comment: InlineComment) => (
-          <div key={comment.id} className={`comment-card ${comment.isGitHubComment ? "github-comment" : ""}`}>
-            <div className="comment-header">
-              <div className="comment-author-info">
-                <div className="comment-author-avatar">
-                  {comment.avatarUrl ? (
-                    <img src={comment.avatarUrl} alt={comment.author} className="comment-avatar-img" />
-                  ) : (
-                    comment.author[0]
-                  )}
-                </div>
-                <span className="comment-author-name">{comment.author}</span>
-                {comment.isGitHubComment && (
-                  <span className="comment-badge-github">GitHub</span>
-                )}
-                <span className="comment-time">{comment.createdAt}</span>
-              </div>
-              {!comment.isGitHubComment && (
-                <button
-                  className="comment-delete-btn"
-                  onClick={() => onDeleteComment(comment.id)}
-                  title="Delete comment"
-                >
-                  <Trash2 size={13} />
-                </button>
-              )}
-            </div>
-            <div className="comment-body">{comment.text}</div>
-          </div>
-        ))}
-
-        {hasDraft && (
-          <div className="comment-form">
-            <textarea
-              className="comment-textarea"
-              placeholder="Write a comment..."
-              value={text}
-              onChange={(e) =>
-                setDraftText((prev) => ({
-                  ...prev,
-                  [draftKey]: e.target.value,
-                }))
-              }
-              autoFocus
-            />
-            <div className="comment-form-actions">
-              <button
-                className="btn btn-secondary"
-                style={{ padding: "6px 12px", fontSize: "12px", borderRadius: "var(--radius-sm)" }}
-                onClick={() => handleCancelDraft(lineNumber, side)}
-              >
-                Cancel
-              </button>
-              <button
-                className="btn btn-primary"
-                style={{ padding: "6px 12px", fontSize: "12px", borderRadius: "var(--radius-sm)" }}
-                onClick={() => handleSaveComment(lineNumber, side)}
-                disabled={!text.trim()}
-              >
-                Comment
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      <LineAnnotationBox
+        filename={file.filename}
+        side={side}
+        lineNumber={lineNumber}
+      />
     );
   };
 
