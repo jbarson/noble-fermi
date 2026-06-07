@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Agent files
+.agents/
+.antigravitycli/
+skills-lock.json

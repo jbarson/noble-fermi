@@ -110,3 +110,17 @@ The project has extremely strict linting guidelines. Failing to follow these rul
 *   **Design Paradigm**: Modern Glassmorphism. Features blurred backdrops (`backdrop-filter: blur()`), glowing borders, and rich dark hues.
 *   **Theme Integration**: The application tracks a custom `data-theme` attribute on the `<html>` or `.app-container` element.
 *   **Colors & Properties**: Use the predefined CSS custom properties inside `src/index.css` (e.g. `var(--text-primary)`, `var(--bg-glass)`, `var(--border)`). Do not hardcode hex/RGB values.
+
+## 🤖 Agent skills
+
+### Issue tracker
+
+Issues and PRDs live in the repository's GitHub Issues, managed via the `gh` CLI. See [issue-tracker.md](file:///Users/jon/Documents/antigravity/noble-fermi/docs/agents/issue-tracker.md).
+
+### Triage labels
+
+Triage roles are mapped to standard label strings (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See [triage-labels.md](file:///Users/jon/Documents/antigravity/noble-fermi/docs/agents/triage-labels.md).
+
+### Domain docs
+
+The project uses a single-context layout with a global `CONTEXT.md` and a central `docs/adr/` directory. See [domain.md](file:///Users/jon/Documents/antigravity/noble-fermi/docs/agents/domain.md).
