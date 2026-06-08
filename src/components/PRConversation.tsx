@@ -43,7 +43,6 @@ export function PRConversation({
   onRefreshMetadata,
   onOpenTokenModal
 }: PRConversationProps) {
-  console.log("PRConversation prMetadata:", prMetadata);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

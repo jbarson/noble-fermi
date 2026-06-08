@@ -22,6 +22,7 @@ export function Dashboard({ onSubmit, isLoading, token, onOpenTokenModal }: Dash
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(false);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [collapsedOrgs, setCollapsedOrgs] = useLocalStorage<Record<string, boolean>>("dashboard-collapsed-orgs", {});
+  const [collapsedRepos, setCollapsedRepos] = useLocalStorage<Record<string, boolean>>("dashboard-collapsed-repos", {});
 
   const toggleOrgCollapse = useCallback((org: string) => {
     setCollapsedOrgs((prev) => ({
@@ -29,6 +30,13 @@ export function Dashboard({ onSubmit, isLoading, token, onOpenTokenModal }: Dash
       [org]: !prev[org],
     }));
   }, [setCollapsedOrgs]);
+
+  const toggleRepoCollapse = useCallback((repoKey: string) => {
+    setCollapsedRepos((prev) => ({
+      ...prev,
+      [repoKey]: !prev[repoKey],
+    }));
+  }, [setCollapsedRepos]);
 
   const isAuthenticated = !!token && token.trim().length > 0;
 
@@ -98,16 +106,19 @@ export function Dashboard({ onSubmit, isLoading, token, onOpenTokenModal }: Dash
     }
   };
 
-  // Group PRs by Organization (owner)
+  // Group PRs by Organization (owner) and then by Repository
   const groupedPrs = useMemo(() => {
-    const groups: Record<string, SearchPRItem[]> = {};
+    const groups: Record<string, Record<string, SearchPRItem[]>> = {};
     
     prs.forEach((pr) => {
-      const { owner } = parseRepoInfo(pr.repository_url);
+      const { owner, repo } = parseRepoInfo(pr.repository_url);
       if (!groups[owner]) {
-        groups[owner] = [];
+        groups[owner] = {};
       }
-      groups[owner].push(pr);
+      if (!groups[owner][repo]) {
+        groups[owner][repo] = [];
+      }
+      groups[owner][repo].push(pr);
     });
 
     return groups;
@@ -242,57 +253,80 @@ export function Dashboard({ onSubmit, isLoading, token, onOpenTokenModal }: Dash
               </div>
             ) : (
               <div className="org-list">
-                {Object.entries(groupedPrs).map(([org, items]) => {
-                  const isCollapsed = !!collapsedOrgs[org];
+                {Object.entries(groupedPrs).map(([org, repos]) => {
+                  const isOrgCollapsed = !!collapsedOrgs[org];
+                  const orgPrCount = Object.values(repos).reduce((acc, items) => acc + items.length, 0);
+
                   return (
                     <div key={org} className="org-section">
                       <h2
-                        className={`org-title ${isCollapsed ? "collapsed" : ""}`}
+                        className={`org-title ${isOrgCollapsed ? "collapsed" : ""}`}
                         onClick={() => toggleOrgCollapse(org)}
                       >
                         <ChevronDown size={14} className="chevron" />
-                        <span>{org} ({items.length})</span>
+                        <span>{org} ({orgPrCount})</span>
                       </h2>
                       
-                      {!isCollapsed && (
-                        <div className="pr-cards-grid">
-                          {items.map((pr) => {
-                            const { repo } = parseRepoInfo(pr.repository_url);
-                            const isAuthor = pr.user.login === username;
-                            const isAssignee = pr.assignees?.some((a) => a.login === username);
+                      {!isOrgCollapsed && (
+                        <div className="org-repositories">
+                          {Object.entries(repos).map(([repo, items]) => {
+                            const repoKey = `${org}/${repo}`;
+                            const isRepoCollapsed = !!collapsedRepos[repoKey];
 
                             return (
-                              <div key={pr.id} className="pr-card glass-card" onClick={() => onSubmit(pr.html_url)}>
-                                <div className="pr-card-header">
-                                  <span className="repo-badge">{repo}</span>
-                                  <span className="pr-time">{getRelativeTime(pr.updated_at)}</span>
+                              <div key={repo} className="repo-section">
+                                <div
+                                  className={`dashboard-repo-title ${isRepoCollapsed ? "collapsed" : ""}`}
+                                  onClick={() => toggleRepoCollapse(repoKey)}
+                                >
+                                  <ChevronDown size={12} className="chevron" />
+                                  <FolderOpen size={14} className="folder-icon" />
+                                  <span className="repo-name">{repo}</span>
+                                  <span className="repo-pr-count">{items.length}</span>
                                 </div>
 
-                                <h3 className="pr-title" title={pr.title}>
-                                  {pr.title}
-                                </h3>
+                                {!isRepoCollapsed && (
+                                  <div className="pr-cards-grid">
+                                    {items.map((pr) => {
+                                      const isAuthor = pr.user.login === username;
+                                      const isAssignee = pr.assignees?.some((a) => a.login === username);
 
-                                <div className="pr-card-footer">
-                                  <span className="pr-number">#{pr.number}</span>
-                                  
-                                  <div className="pr-author-info">
-                                    <img src={pr.user.avatar_url} alt={pr.user.login} className="pr-author-avatar" title={`Opened by ${pr.user.login}`} />
-                                    <span className="pr-author-name">{pr.user.login}</span>
-                                  </div>
+                                      return (
+                                        <div key={pr.id} className="pr-card glass-card" onClick={() => onSubmit(pr.html_url)}>
+                                          <div className="pr-card-header">
+                                            <span className="pr-time">{getRelativeTime(pr.updated_at)}</span>
+                                          </div>
 
-                                  <div className="role-badges">
-                                    {isAuthor && (
-                                      <span className="badge badge-role badge-author" title="You authored this PR">
-                                        <User size={10} /> Author
-                                      </span>
-                                    )}
-                                    {isAssignee && (
-                                      <span className="badge badge-role badge-assignee" title="You are assigned to this PR">
-                                        <Users size={10} /> Assignee
-                                      </span>
-                                    )}
+                                          <h3 className="pr-card-title" title={pr.title}>
+                                            {pr.title}
+                                          </h3>
+
+                                          <div className="pr-card-footer">
+                                            <span className="pr-number">#{pr.number}</span>
+                                            
+                                            <div className="pr-author-info">
+                                              <img src={pr.user.avatar_url} alt={pr.user.login} className="pr-author-avatar" title={`Opened by ${pr.user.login}`} />
+                                              <span className="pr-author-name">{pr.user.login}</span>
+                                            </div>
+
+                                            <div className="role-badges">
+                                              {isAuthor && (
+                                                <span className="badge badge-role badge-author" title="You authored this PR">
+                                                  <User size={10} /> Author
+                                                </span>
+                                              )}
+                                              {isAssignee && (
+                                                <span className="badge badge-role badge-assignee" title="You are assigned to this PR">
+                                                  <Users size={10} /> Assignee
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
                                   </div>
-                                </div>
+                                )}
                               </div>
                             );
                           })}

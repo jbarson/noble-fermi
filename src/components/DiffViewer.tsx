@@ -1,8 +1,6 @@
 import { useState, useEffect } from "react";
 import { Eye, EyeOff, FileText, Files } from "lucide-react";
-import { fetchGraphQLComments } from "../services/github";
-import type { FileChange, GitHubUrlInfo, GraphQLReviewThread } from "../services/github";
-import { useLocalStorage } from "../hooks/useLocalStorage";
+import type { FileChange, GitHubUrlInfo } from "../services/github";
 import { FileDiffItem } from "./FileDiffItem";
 
 interface DiffViewerProps {
@@ -14,62 +12,10 @@ interface DiffViewerProps {
   headSha?: string;
 }
 
-export interface InlineComment {
-  id: string;
-  sessionKey: string;
-  filename: string;
-  lineNumber: number;
-  side: "additions" | "deletions";
-  author: string;
-  text: string;
-  createdAt: string;
-  avatarUrl?: string; // Support avatar URL for GitHub authors
-  isGitHubComment?: boolean; // Distinguish GitHub API comments
-}
-
 export function DiffViewer({ files, activeFile, info, token, baseSha, headSha }: DiffViewerProps) {
   const [layout, setLayout] = useState<"split" | "unified">("split");
   const [wrapLines, setWrapLines] = useState(false);
   const [theme, setTheme] = useState<"github-dark" | "github-light" | "dracula" | "solarized-light">("github-dark");
-
-  // Global comments state
-  const [comments, setComments] = useLocalStorage<InlineComment[]>("diff-comments", []);
-  const [githubComments, setGithubComments] = useState<GraphQLReviewThread[]>([]);
-
-  const sessionKey = info ? `${info.owner}/${info.repo}/${info.resourceType}/${info.id}` : "local";
-
-  // Fetch live reviews from GitHub GraphQL API if viewing a PR
-  useEffect(() => {
-    if (!info || info.resourceType !== "pull" || !token || !token.trim()) {
-      Promise.resolve().then(() => {
-        setGithubComments([]);
-      });
-      return;
-    }
-
-    const { owner, repo, id } = info;
-    const prNumber = parseInt(id, 10);
-    if (isNaN(prNumber)) return;
-
-    let isMounted = true;
-
-    async function loadGithubComments() {
-      try {
-        const threads = await fetchGraphQLComments(owner, repo, prNumber, token);
-        if (isMounted) {
-          setGithubComments(threads);
-        }
-      } catch (err) {
-        console.error("Failed to fetch live GitHub review comments:", err);
-      }
-    }
-
-    loadGithubComments();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [info, token]);
 
   // Scroll to active file when sidebar item is clicked
   useEffect(() => {
@@ -86,14 +32,6 @@ export function DiffViewer({ files, activeFile, info, token, baseSha, headSha }:
       }
     }
   }, [activeFile]);
-
-  const handleSaveComment = (newComment: InlineComment) => {
-    setComments((prev) => [...prev, newComment]);
-  };
-
-  const handleDeleteComment = (commentId: string) => {
-    setComments((prev) => prev.filter((c) => c.id !== commentId));
-  };
 
   return (
     <div className="viewer-pane">
@@ -170,11 +108,6 @@ export function DiffViewer({ files, activeFile, info, token, baseSha, headSha }:
                 layout={layout}
                 wrapLines={wrapLines}
                 theme={theme}
-                comments={comments}
-                githubComments={githubComments}
-                onSaveComment={handleSaveComment}
-                onDeleteComment={handleDeleteComment}
-                sessionKey={sessionKey}
               />
             ))}
           </div>
