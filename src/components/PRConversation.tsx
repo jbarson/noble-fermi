@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { 
   GitCommit, 
   CheckCircle2, 
@@ -9,9 +9,19 @@ import {
   RefreshCw, 
   AlertTriangle, 
   Users, 
-  ChevronDown 
+  ChevronDown,
+  Bold,
+  Italic,
+  Heading,
+  Quote,
+  Code,
+  Link,
+  List,
+  ListOrdered,
+  Image as ImageIcon,
+  AtSign
 } from "lucide-react";
-import { fetchPRTimeline } from "../services/github";
+import { fetchPRTimeline, postPRComment, closePullRequest, fetchUserProfile } from "../services/github";
 import type { TimelineEvent, PRMetadata } from "../services/github";
 
 interface PRConversationProps {
@@ -20,29 +30,56 @@ interface PRConversationProps {
   prNumber: number;
   token: string;
   prMetadata: PRMetadata;
+  onRefreshMetadata?: () => void;
+  onOpenTokenModal?: () => void;
 }
 
-export function PRConversation({ owner, repo, prNumber, token, prMetadata }: PRConversationProps) {
+export function PRConversation({ 
+  owner, 
+  repo, 
+  prNumber, 
+  token, 
+  prMetadata,
+  onRefreshMetadata,
+  onOpenTokenModal
+}: PRConversationProps) {
   console.log("PRConversation prMetadata:", prMetadata);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedCommits, setExpandedCommits] = useState<Record<string, boolean>>({});
 
-  const toggleCommitExpand = useCallback((sha: string) => {
-    if (!sha) return;
-    setExpandedCommits((prev) => ({
-      ...prev,
-      [sha]: prev[sha] !== undefined ? !prev[sha] : false,
-    }));
-  }, []);
+  const [currentUser, setCurrentUser] = useState<{ login: string; avatar_url: string } | null>(null);
+  const [commentText, setCommentText] = useState("");
+  const [activeTab, setActiveTab] = useState<"write" | "preview">("write");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    Promise.resolve().then(async () => {
+      if (!token) {
+        setCurrentUser(null);
+        return;
+      }
+      try {
+        const profile = await fetchUserProfile(token);
+        setCurrentUser(profile);
+      } catch (err) {
+        console.error("Failed to fetch user profile", err);
+      }
+    });
+  }, [token]);
 
   const loadTimeline = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
       const events = await fetchPRTimeline(owner, repo, prNumber, token);
-      // Filter out empty events or duplicates
       setTimeline(events);
     } catch (err) {
       console.error(err);
@@ -58,6 +95,209 @@ export function PRConversation({ owner, repo, prNumber, token, prMetadata }: PRC
       loadTimeline();
     });
   }, [loadTimeline]);
+
+  const toggleCommitExpand = useCallback((sha: string) => {
+    if (!sha) return;
+    setExpandedCommits((prev) => ({
+      ...prev,
+      [sha]: prev[sha] !== undefined ? !prev[sha] : false,
+    }));
+  }, []);
+
+  const insertMarkdown = useCallback((format: string) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    const selected = text.substring(start, end);
+
+    let prefix = "";
+    let suffix = "";
+    let placeholder = "";
+
+    switch (format) {
+      case "bold":
+        prefix = "**";
+        suffix = "**";
+        placeholder = "bold text";
+        break;
+      case "italic":
+        prefix = "*";
+        suffix = "*";
+        placeholder = "italic text";
+        break;
+      case "heading":
+        prefix = "### ";
+        suffix = "";
+        placeholder = "Heading";
+        break;
+      case "quote":
+        prefix = "> ";
+        suffix = "";
+        placeholder = "Quote";
+        break;
+      case "code":
+        prefix = "`";
+        suffix = "`";
+        placeholder = "code";
+        break;
+      case "link":
+        prefix = "[";
+        suffix = "](https://example.com)";
+        placeholder = "link text";
+        break;
+      case "image":
+        prefix = "![";
+        suffix = "](url)";
+        placeholder = "Image alt";
+        break;
+      case "list":
+        prefix = "- ";
+        suffix = "";
+        placeholder = "List item";
+        break;
+      case "list-ordered":
+        prefix = "1. ";
+        suffix = "";
+        placeholder = "List item";
+        break;
+      case "mention":
+        prefix = "@";
+        suffix = "";
+        placeholder = "username";
+        break;
+      default:
+        break;
+    }
+
+    const insertedText = selected || placeholder;
+    const newText = text.substring(0, start) + prefix + insertedText + suffix + text.substring(end);
+    setCommentText(newText);
+
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        const newStart = start + prefix.length;
+        const newEnd = newStart + insertedText.length;
+        textareaRef.current.setSelectionRange(newStart, newEnd);
+      }
+    }, 0);
+  }, []);
+
+  const handleImageFile = useCallback((file: File) => {
+    if (!file.type.startsWith("image/")) {
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64Data = e.target?.result;
+      if (typeof base64Data === "string") {
+        const textarea = textareaRef.current;
+        const start = textarea ? textarea.selectionStart : commentText.length;
+        const end = textarea ? textarea.selectionEnd : commentText.length;
+        
+        const imageMarkdown = `\n![${file.name}](${base64Data})\n`;
+        const newText = commentText.substring(0, start) + imageMarkdown + commentText.substring(end);
+        setCommentText(newText);
+
+        setTimeout(() => {
+          if (textareaRef.current) {
+            textareaRef.current.focus();
+            const newPos = start + imageMarkdown.length;
+            textareaRef.current.setSelectionRange(newPos, newPos);
+          }
+        }, 0);
+      }
+    };
+    reader.onerror = (err) => {
+      console.error("Failed to read image file", err);
+    };
+    reader.readAsDataURL(file);
+  }, [commentText]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      handleImageFile(file);
+    }
+  }, [handleImageFile]);
+
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (e.clipboardData.files && e.clipboardData.files.length > 0) {
+      const file = e.clipboardData.files[0];
+      if (file.type.startsWith("image/")) {
+        e.preventDefault();
+        handleImageFile(file);
+      }
+    }
+  }, [handleImageFile]);
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      handleImageFile(file);
+      e.target.value = "";
+    }
+  }, [handleImageFile]);
+
+  const handleCommentSubmit = useCallback(async () => {
+    if (!commentText.trim()) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      await postPRComment(owner, repo, prNumber, commentText, token);
+      setCommentText("");
+      setActiveTab("write");
+      await loadTimeline();
+      if (onRefreshMetadata) {
+        onRefreshMetadata();
+      }
+    } catch (err) {
+      console.error(err);
+      setSubmitError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [owner, repo, prNumber, commentText, token, loadTimeline, onRefreshMetadata]);
+
+  const handleClosePRSubmit = useCallback(async () => {
+    setIsClosing(true);
+    setSubmitError(null);
+    try {
+      if (commentText.trim()) {
+        await postPRComment(owner, repo, prNumber, commentText, token);
+        setCommentText("");
+        setActiveTab("write");
+      }
+      await closePullRequest(owner, repo, prNumber, token);
+      await loadTimeline();
+      if (onRefreshMetadata) {
+        onRefreshMetadata();
+      }
+    } catch (err) {
+      console.error(err);
+      setSubmitError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsClosing(false);
+    }
+  }, [owner, repo, prNumber, commentText, token, loadTimeline, onRefreshMetadata]);
+
 
   const getRelativeTime = (dateStr: string | undefined) => {
     if (!dateStr) return "";
@@ -85,7 +325,7 @@ export function PRConversation({ owner, repo, prNumber, token, prMetadata }: PRC
   };
 
   const parseTextDecorations = (text: string, partIndex: number): React.ReactNode => {
-    const regex = /(\*\*|__)(.*?)\1|(\*|_)(.*?)\3|\[([^\]]+)\]\(([^)]+)\)/g;
+    const regex = /(\*\*|__)(.*?)\1|(\*|_)(.*?)\3|(!?)\[([^\]]*)\]\(([^)]+)\)/g;
     const elements: React.ReactNode[] = [];
     let lastIndex = 0;
     let match;
@@ -108,17 +348,32 @@ export function PRConversation({ owner, repo, prNumber, token, prMetadata }: PRC
             {parseTextDecorations(match[4], partIndex + 1)}
           </em>
         );
-      } else if (match[5]) {
-        elements.push(
-          <a 
-            key={`link-${partIndex}-${keyIdx++}`} 
-            href={match[6]} 
-            target="_blank" 
-            rel="noopener noreferrer"
-          >
-            {match[5]}
-          </a>
-        );
+      } else if (match[6] !== undefined && match[7] !== undefined) {
+        const isImage = match[5] === "!";
+        const label = match[6];
+        const url = match[7];
+
+        if (isImage) {
+          elements.push(
+            <img 
+              key={`image-${partIndex}-${keyIdx++}`} 
+              src={url} 
+              alt={label} 
+              className="formatted-image"
+            />
+          );
+        } else {
+          elements.push(
+            <a 
+              key={`link-${partIndex}-${keyIdx++}`} 
+              href={url} 
+              target="_blank" 
+              rel="noopener noreferrer"
+            >
+              {label}
+            </a>
+          );
+        }
       }
 
       lastIndex = regex.lastIndex;
@@ -491,6 +746,149 @@ export function PRConversation({ owner, repo, prNumber, token, prMetadata }: PRC
             })}
           </div>
         )}
+
+        {/* Add Comment Section */}
+        <div className="composer-timeline-row">
+          <div className="composer-avatar-column">
+            <img 
+              src={currentUser?.avatar_url || "https://github.com/identicons/placeholder.png"} 
+              alt={currentUser?.login || "User"} 
+              className="composer-author-avatar" 
+            />
+          </div>
+          
+          <div className="composer-card-column">
+            <div className="comment-composer-wrapper glass-card">
+              {!token ? (
+                <div className="composer-token-warning">
+                  <AlertTriangle size={20} className="warning-icon" />
+                  <p>You must configure a GitHub Personal Access Token to comment or close this pull request.</p>
+                  <button onClick={onOpenTokenModal} className="btn btn-primary" style={{ marginTop: "8px" }}>
+                    Configure Token
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="composer-header-tabs-row">
+                    <div className="composer-tabs">
+                      <button 
+                        className={`composer-tab-btn ${activeTab === "write" ? "active" : ""}`}
+                        onClick={() => setActiveTab("write")}
+                        type="button"
+                      >
+                        Write
+                      </button>
+                      <button 
+                        className={`composer-tab-btn ${activeTab === "preview" ? "active" : ""}`}
+                        onClick={() => setActiveTab("preview")}
+                        type="button"
+                      >
+                        Preview
+                      </button>
+                    </div>
+
+                    {activeTab === "write" && (
+                      <div className="composer-toolbar">
+                        <button onClick={() => insertMarkdown("heading")} title="Add heading" type="button"><Heading size={15} /></button>
+                        <button onClick={() => insertMarkdown("bold")} title="Add bold text" type="button"><Bold size={15} /></button>
+                        <button onClick={() => insertMarkdown("italic")} title="Add italic text" type="button"><Italic size={15} /></button>
+                        <div className="toolbar-divider" />
+                        <button onClick={() => insertMarkdown("quote")} title="Insert quote" type="button"><Quote size={15} /></button>
+                        <button onClick={() => insertMarkdown("code")} title="Insert code" type="button"><Code size={15} /></button>
+                        <button onClick={() => insertMarkdown("link")} title="Add a link" type="button"><Link size={15} /></button>
+                        <div className="toolbar-divider" />
+                        <button onClick={() => insertMarkdown("list")} title="Add a bullet list" type="button"><List size={15} /></button>
+                        <button onClick={() => insertMarkdown("list-ordered")} title="Add a numbered list" type="button"><ListOrdered size={15} /></button>
+                        <button onClick={() => insertMarkdown("image")} title="Add an image link" type="button"><ImageIcon size={15} /></button>
+                        <button onClick={() => insertMarkdown("mention")} title="Mention a user" type="button"><AtSign size={15} /></button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="composer-body-container">
+                    {activeTab === "write" ? (
+                      <div 
+                        className={`textarea-drag-drop-zone ${isDragOver ? "drag-over" : ""}`}
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                      >
+                        <textarea
+                          ref={textareaRef}
+                          className="composer-textarea"
+                          placeholder="Add your comment here... (Paste, drop, or click below to attach images)"
+                          value={commentText}
+                          onChange={(e) => setCommentText(e.target.value)}
+                          onPaste={handlePaste}
+                        />
+                        <div className="drag-drop-overlay-msg">
+                          <span>Drop image to insert</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="composer-preview-area formatted-markdown">
+                        {renderFormattedBody(commentText)}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="composer-footer">
+                    <div className="composer-footer-info">
+                      <svg aria-hidden="true" height="16" viewBox="0 0 16 16" version="1.1" width="16" className="markdown-icon" style={{ fill: "currentColor" }}>
+                        <path d="M14.85 3H1.15C.52 3 0 3.52 0 4.15v7.69C0 12.48.52 13 1.15 13h13.69c.63 0 1.15-.52 1.15-1.15v-7.7C16 3.52 15.48 3 14.85 3zM9 11H7V8L5.5 9.78 4 8v3H2V5h2l1.5 1.8L7 5h2v6zm5.2-3h-1.6v3h-1.7V8h-1.6l2.45-3 2.45 3z"></path>
+                      </svg>
+                      <span>Markdown is supported</span>
+                    </div>
+                    
+                    <button 
+                      type="button" 
+                      className="composer-upload-trigger-btn"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <ImageIcon size={14} />
+                      <span>Attach files by pasting, dropping, or clicking here</span>
+                    </button>
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      onChange={handleFileChange} 
+                      accept="image/*" 
+                      style={{ display: "none" }} 
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            {token && (
+              <div className="composer-actions">
+                {submitError && <div className="composer-submit-error">{submitError}</div>}
+                
+                {prMetadata.state === "open" && (
+                  <button
+                    onClick={handleClosePRSubmit}
+                    disabled={isSubmitting || isClosing}
+                    className="btn btn-secondary btn-close-pr flex-center-gap"
+                    type="button"
+                  >
+                    {isClosing ? <RefreshCw size={14} className="spin" /> : <XCircle size={14} />}
+                    <span>{commentText.trim() ? "Close with comment" : "Close pull request"}</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={handleCommentSubmit}
+                  disabled={isSubmitting || isClosing || !commentText.trim()}
+                  className="btn btn-success btn-post-comment flex-center-gap"
+                  type="button"
+                >
+                  {isSubmitting ? <RefreshCw size={14} className="spin" /> : <MessageSquare size={14} />}
+                  <span>Comment</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -106,6 +106,60 @@ export default function App() {
     window.history.pushState({}, "", newUrl.toString());
   }, [activeSession]);
 
+  const handleRefreshMetadata = useCallback(async () => {
+    if (!activeSession?.prMetadata) return;
+    try {
+      const prUrl = `https://api.github.com/repos/${activeSession.info.owner}/${activeSession.info.repo}/pulls/${activeSession.info.id}`;
+      const headers: Record<string, string> = {
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      };
+      if (token && token.trim()) {
+        headers["Authorization"] = `Bearer ${token.trim()}`;
+      }
+      const res = await fetch(prUrl, { headers });
+      if (res.ok) {
+        const prData = await res.json();
+        setActiveSession(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            prMetadata: {
+              title: prData.title,
+              body: prData.body,
+              state: prData.state,
+              merged: prData.merged || false,
+              draft: prData.draft || false,
+              user: {
+                login: prData.user.login,
+                avatar_url: prData.user.avatar_url,
+              },
+              created_at: prData.created_at,
+              base: {
+                ref: prData.base.ref,
+                repo: {
+                  full_name: prData.base.repo?.full_name || `${prev.info.owner}/${prev.info.repo}`,
+                },
+              },
+              head: {
+                ref: prData.head.ref,
+                repo: {
+                  full_name: prData.head.repo?.full_name || `${prev.info.owner}/${prev.info.repo}`,
+                },
+              },
+              additions: prData.additions || 0,
+              deletions: prData.deletions || 0,
+              changed_files: prData.changed_files || 0,
+              comments: prData.comments || 0,
+            }
+          };
+        });
+      }
+    } catch (err) {
+      console.error("Failed to refresh PR metadata", err);
+    }
+  }, [activeSession, token]);
+
   const handleReset = () => {
     setActiveSession(null);
     setActiveFile(null);
@@ -117,6 +171,7 @@ export default function App() {
     newUrl.search = "";
     window.history.pushState({}, "", newUrl.toString());
   };
+
 
   const handleToggleTheme = () => {
     setTheme(prev => (prev === "light" ? "dark" : "light"));
@@ -228,6 +283,8 @@ export default function App() {
                     prNumber={parseInt(activeSession.info.id, 10)}
                     token={token}
                     prMetadata={activeSession.prMetadata}
+                    onRefreshMetadata={handleRefreshMetadata}
+                    onOpenTokenModal={() => setIsTokenModalOpen(true)}
                   />
                 ) : (
                   <>

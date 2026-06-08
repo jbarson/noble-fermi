@@ -470,3 +470,41 @@ export async function fetchPRTimeline(
   await handleResponse(response);
   return response.json();
 }
+
+/**
+ * Posts a new comment to the PR discussion timeline.
+ */
+export async function postPRComment(
+  owner: string,
+  repo: string,
+  prNumber: number,
+  body: string,
+  token: string
+): Promise<TimelineEvent> {
+  const url = `https://api.github.com/repos/${owner}/${repo}/issues/${prNumber}/comments`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: getHeaders(token),
+    body: JSON.stringify({ body }),
+  });
+  await handleResponse(response);
+  return response.json();
+}
+
+/**
+ * Closes a pull request.
+ */
+export async function closePullRequest(
+  owner: string,
+  repo: string,
+  prNumber: number,
+  token: string
+): Promise<void> {
+  const url = `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`;
+  const response = await fetch(url, {
+    method: "PATCH",
+    headers: getHeaders(token),
+    body: JSON.stringify({ state: "closed" }),
+  });
+  await handleResponse(response);
+}
